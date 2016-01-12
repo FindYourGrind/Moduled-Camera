@@ -3,7 +3,7 @@ from PIL import Image
 import numpy as np
 import copy
 import json
-import plateToText
+#import plateToText
 
 
 class PlaitNumberFinder(object):
@@ -211,27 +211,30 @@ def plateFinder(finder, image):
                     return numberForParsing
 
 
-def plate(data):
+def plate(path):
+
+    image = cv.imread(path)
 
     finder = PlaitNumberFinder()
     finder.doConfig('config.json')
     finder.setHaarCascade(finder.config['haarPath'])
 
-    dataForTess = plateFinder(finder, data)
+    plateFinder(finder, image)
 
-    t = plateToText.Tesseracter()
+    #t = plateToText.Tesseracter()
 
-    t.config('config.json')
+    #t.config('config.json')
 
-    im = Image.open('justNumber.png')
-    im = im.convert("P")
-    t.setImg(im)
-    res = t.getText()
-    print(res)
+    #im = Image.open('justNumber.png')
+    #im = im.convert("P")
+    #t.setImg(im)
+    #res = t.getText()
+    #print(res)
+    return True
 
 
 if __name__ == '__main__':
-    image = cv.imread('plateTest.jpg')
-    plate(image)
+    pass
+    #plate(image)
 else:
     pass

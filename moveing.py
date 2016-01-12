@@ -5,21 +5,28 @@ from multiprocessing import Pool
 
 def detect(images, savePrv=False, num=0):
 
-    gray = cv.cvtColor(images[0], cv.COLOR_BGR2GRAY)
+    gray = cv.cvtColor(images[0][num], cv.COLOR_BGR2GRAY)
     gray = cv.GaussianBlur(gray, (21, 21), 0)
 
     if savePrv:
-        grayPrv = images[1]
+        if images[1][num] is None:
+            grayPrv = gray
+        else:
+            grayPrv = images[1][num]
     else:
-        if images[1] is None:
+        if images[1][num] is None:
             return None
-        grayPrv = cv.cvtColor(images[1], cv.COLOR_BGR2GRAY)
+        grayPrv = cv.cvtColor(images[1][num], cv.COLOR_BGR2GRAY)
         grayPrv = cv.GaussianBlur(grayPrv, (21, 21), 0)
 
     if savePrv:
-        images[1] = gray
+        images[1][num] = gray
 
-    frameDelta = cv.absdiff(grayPrv, gray)
+    try:
+        frameDelta = cv.absdiff(grayPrv, gray)
+    except:
+        return False
+
     thresh = cv.threshold(frameDelta, 25, 255, cv.THRESH_BINARY)[1]
     thresh = cv.erode(thresh, None, iterations=2)
 
@@ -61,8 +68,8 @@ class MovingDetector(object):
             if self.activeRoi:
                 for roi in self.activeRoi:
                     self.littleImgs[roi] = next(g)
-                    images.append([self.littleImgs[roi],
-                                   self.littleImgsPrv[roi]])
+                    images.append([self.littleImgs,
+                                   self.littleImgsPrv])
                     self.littleImgsPrv[roi] = self.littleImgs[roi]
                     roiCount += 1
                 p = Pool(roiCount)
@@ -83,8 +90,8 @@ class MovingDetector(object):
                 if self.activeRoi:
                     for roi in self.activeRoi:
                         self.littleImgs[roi] = next(g)
-                        results.append(detect([self.littleImgs[roi],
-                                               self.littleImgsPrv[roi]],
+                        results.append(detect([self.littleImgs,
+                                               self.littleImgsPrv],
                                                True, roi))
                 return results
             else:
