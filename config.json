@@ -1,0 +1,22 @@
+{
+    "framer": {
+        "framerate": 30
+    },
+    "moving": {
+        "roiForDrive": [],
+        "roiForLeave": []
+    },
+    "plater": {
+        "angle": 0,
+        "haarPath": "haarcascade_russian_plate_number.xml"
+    },
+	"tesseracter": {
+		"standards": {
+		  "ua": [
+			"L{2}D{4}L{2}",
+			"D{5}L{2}"
+		  ],
+		  "ru": false
+		}
+    }
+}
