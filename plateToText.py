@@ -1,6 +1,7 @@
-import pytesser
+import pytesseract
 import re
 import json
+import os
 import sys
 import subprocess
 
@@ -34,7 +35,7 @@ class Tesseracter(object):
         return config_json
 
     def getText(self):
-        rawText = pytesser.image_to_string(self.img)
+        rawText = pytesseract.image_to_string(self.img)
         switchedText = tf.textReplacer(rawText, self.standards_re)
         plates = {"good": [], "bad": []}
 
@@ -64,7 +65,6 @@ if __name__ == '__main__':
     t.setImg(im)
     res = t.getText()
     print(res)
-
 else:
     pass
     """

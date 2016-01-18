@@ -3,7 +3,9 @@ from PIL import Image
 import numpy as np
 import copy
 import json
-#import plateToText
+import plateToText
+
+gConfigPath = '/home/pi/Dev/Moduled-Camera/config.json'
 
 
 class PlaitNumberFinder(object):
@@ -14,6 +16,7 @@ class PlaitNumberFinder(object):
         self.plaitNumberImage = 0
         self.plaitNumberHigh = 1
         self.plaitNumberWidth = 1
+        self.imageID = 0
         self.config = {}
 
     def doConfig(self, path):
@@ -29,16 +32,18 @@ class PlaitNumberFinder(object):
 
     def detectPlaitNumber(self, img):
         plaitNumber = self.number_cascade.detectMultiScale(img, 1.3, 5)
-        print(plaitNumber)
+        #print(plaitNumber)
         for (x, y, w, h) in plaitNumber:
             self.plaitNumberImage = img[y:y + h, x:x + w]
             height, width = self.plaitNumberImage.shape[:2]
-            self.plaitNumberImage = cv.resize(self.plaitNumberImage, (width * 100 / height, 100),
+            self.plaitNumberImage = cv.resize(self.plaitNumberImage,
+                                              (width * 100 / height, 100),
                                               interpolation=cv.INTER_CUBIC)
-            self.saveImgInJPG("plate.jpg", self.plaitNumberImage)
+            self.saveImgInJPG("/mnt/ramdisk/" + self.imageID + "/justNumber.jpg",
+                              self.plaitNumberImage)
             return self.plaitNumberImage
         else:
-            print("Plate Number Not Finded")
+            #print("Plate Number Not Finded")
             return None
 
     def doGrayImg(self, img):
@@ -53,11 +58,13 @@ class PlaitNumberFinder(object):
     def findContours(self, treshImage):
         rows, cols = treshImage.shape[:2]
         if rows > 0 and cols > 0:
-            image, contours, hierarchy = cv.findContours(treshImage, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
+            image, contours, hierarchy = cv.findContours(treshImage,
+                                                         cv.RETR_TREE,
+                                                         cv.CHAIN_APPROX_SIMPLE)
             if isinstance(contours, type(None)):
-                print("contours not found")
+                #print("contours not found")
                 return None
-            print("Finded contours")
+            #print("Finded contours")
             return contours
         return None
 
@@ -66,7 +73,7 @@ class PlaitNumberFinder(object):
             for cnt in contours:
                 rect = cv.minAreaRect(cnt)
                 k = rect[1]
-                print(k)
+                #print(k)
                 if 2.8 < float(max(k) / (min(k) + 0.0000001)) < 8.0 and min(k) > 43:
                     h = min(k)
                     w = max(k)
@@ -74,15 +81,15 @@ class PlaitNumberFinder(object):
                     y = rect[0][1] - h / 2
                     self.plaitNumberHigh = h
                     self.plaitNumberWidth = w
-                    print("Finded poligon")
+                    #print("Finded poligon")
                     return(grayImg[y:y + h, x:x + w])
-        print("Poligon not finded")
+        #print("Poligon not finded")
         return 0
 
     def findLinesHough(self, edgesImg):
         lines = cv.HoughLines(edgesImg, 1, np.pi / 180, 200)
         if isinstance(lines, type(None)):
-            print("lines no found")
+            #print("lines no found")
             return 0
 
     def estLine(lines):
@@ -97,7 +104,8 @@ class PlaitNumberFinder(object):
     def findLines(self, lines, img, edges):
         t, l = self.estLine(lines)
         rows, cols, depth = img.shape
-        M = cv.getRotationMatrix2D((cols / 2, rows / 2), (t[0] - 1.57079637) * 180 / np.pi, 1)
+        M = cv.getRotationMatrix2D((cols / 2, rows / 2),
+                                    (t[0] - 1.57079637) * 180 / np.pi, 1)
         res = cv.warpAffine(img, M, (cols, rows))
         lines = cv.HoughLines(res, 1, np.pi / 180, 200)
         t, l = self.estLine(lines)
@@ -154,9 +162,9 @@ class PlaitNumberFinder(object):
             x = 40 * i + 3
             numberForParsing[5:50, x:x + 30] = tmp
 
-        self.saveImgInJPG('justNumber.jpg', numberForParsing)
-        self.openJPGsavePNG('justNumber.jpg', 'justNumber.png')
-        numberForParsing = cv.imread('justNumber.jpg')
+        self.saveImgInJPG("/mnt/ramdisk/" + self.imageID + "/justNumber.jpg", numberForParsing)
+        self.openJPGsavePNG("/mnt/ramdisk/" + self.imageID + "/justNumber.jpg", "/mnt/ramdisk/" + self.imageID + "/justNumber.png")
+        numberForParsing = cv.imread("/mnt/ramdisk/" + self.imageID + "/justNumber.jpg")
         return numberForParsing
 
     def saveImgInJPG(self, name, img):
@@ -192,7 +200,7 @@ def plateFinder(finder, image):
         contours = finder.findContours(cutNumberImgTresh)
         justNumber = finder.findPoligons(contours, finder.treshImg)
 
-        cv.imwrite('test1.jpg', justNumber)
+        #cv.imwrite('test1.jpg', justNumber)
 
         if not isinstance(justNumber, type(0)):
             row, cols = justNumber.shape
@@ -200,37 +208,45 @@ def plateFinder(finder, image):
 
                 cutNumberImgTresh = copy.copy(justNumber)
                 contours = finder.findContours(cutNumberImgTresh)
-                justNumber = finder.getPlaitNumberByLiterals(contours, justNumber, 140)
+                justNumber = finder.getPlaitNumberByLiterals(contours,
+                                                             justNumber,
+                                                             140)
 
                 if justNumber is not "None":
 
-                    finder.saveImgInJPG('justNumber.jpg', justNumber)
-                    finder.openJPGsavePNG('justNumber.jpg', 'justNumber.png')
-                    numberForParsing = finder.openImgInPNG('justNumber.png')
+                    finder.saveImgInJPG("/mnt/ramdisk/" + finder.imageID + "/justNumber.jpg", justNumber)
+                    finder.openJPGsavePNG("/mnt/ramdisk/" + finder.imageID + "/justNumber.jpg", "/mnt/ramdisk/" + finder.imageID + "/justNumber.png")
+                    #numberForParsing = finder.openImgInPNG('justNumber.png')
 
-                    return numberForParsing
+                    return True
+        else:
+            return False
 
 
 def plate(path):
 
-    image = cv.imread(path)
-
+    image = cv.imread(path[0])
     finder = PlaitNumberFinder()
-    finder.doConfig('config.json')
+    finder.doConfig(gConfigPath)
+    finder.imageID = str(path[1])
     finder.setHaarCascade(finder.config['haarPath'])
 
-    plateFinder(finder, image)
+    if plateFinder(finder, image):
 
-    #t = plateToText.Tesseracter()
+        t = plateToText.Tesseracter()
 
-    #t.config('config.json')
+        t.config(gConfigPath)
 
-    #im = Image.open('justNumber.png')
-    #im = im.convert("P")
-    #t.setImg(im)
-    #res = t.getText()
-    #print(res)
-    return True
+        im = Image.open("/mnt/ramdisk/" + finder.imageID + "/justNumber.png")
+        im = im.convert("P")
+
+        t.setImg(im)
+
+        res = t.getText()
+
+        return res
+    else:
+        return False
 
 
 if __name__ == '__main__':

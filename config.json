@@ -1,10 +1,22 @@
 {
+    "general": {
+        "cameraID": "461727824017081",
+        "imagesPath": "/mnt/ramdisk/",
+        "resolution": {
+            "height": 800,
+            "width": 600
+        },
+        "framerate": 30,
+        "quality": 100,
+        "workers": 10,
+        "videoPort": true
+    },
     "framer": {
         "framerate": 30
     },
     "moving": {
-        "roiForDrive": [],
-        "roiForLeave": []
+        "roiForDrive": [1, 2, 3],
+        "roiForLeave": [4, 5, 6]
     },
     "plater": {
         "angle": 0,
@@ -18,5 +30,8 @@
 		  ],
 		  "ru": false
 		}
+    },
+    "requester": {
+        "url": "http://liko-t4p.rhcloud.com/rest/v2/camera/log"
     }
 }

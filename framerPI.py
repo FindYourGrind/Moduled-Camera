@@ -1,5 +1,4 @@
 import time
-import io
 import picamera
 import picamera.array
 import os
@@ -7,19 +6,22 @@ import moveing
 import cv2 as cv
 import plater
 import shutil
+import json
+import requester
+import errno
 
-from multiprocessing import Pool
-from PIL import Image
+from multiprocessing import Process, Pool
 
-def init_camera(camera):
-    ret = {}
-    ret['resolution'] = camera.resolution = (2592, 1944)
-    ret['framerate'] = camera.framerate = 15
-    ret['raw'] = io.BytesIO()
-    ret['format'] = 'jpeg'
-    ret['port'] = False
-    time.sleep(0.1)
-    return ret
+gConfigPath = '/home/pi/Dev/Moduled-Camera/config.json'
+
+
+def doConfig(path, typeOfConfig):
+    config_file = open(path, 'r')
+    config_string = config_file.read()
+    config_file.close()
+    config_json = json.loads(config_string)
+    config = config_json[typeOfConfig]
+    return config
 
 
 def calcFPS():
@@ -42,67 +44,111 @@ def getLastModifieTime(path):
     return os.path.getmtime(path)
 
 
+def generateRequestData(results):
+    data = {}
+
+    data['place'] = 'none'
+
+    data['goodPlates'] = []
+    data['badPlates'] = []
+
+    for chunk in results:
+        if chunk:
+            if chunk['good']:
+                data['goodPlates'].append(chunk['good'])
+            if chunk['bad']:
+                data['badPlates'].append(chunk['bad'])
+
+    data['direction'] = 0  # direction
+    data['image'] = 'none'
+
+    return data
+
+
+def mkdir(path):
+    try:
+        os.makedirs(path)
+    except OSError as exc:
+        if exc.errno == errno.EEXIST and os.path.isdir(path):
+            pass
+        else:
+            raise
+
+
+def action(paths, direction, workers):
+    p = Pool(workers)
+    results = p.map(plater.plate, paths)
+    p.close()
+
+    for worker in results:
+        if worker is not False:
+            data = generateRequestData(results)
+            requester.doRequest(data)
+
+
 if __name__ == '__main__':
 
-    #f = open('/mnt/ramdisk/pic.jpeg', 'w+')
-    #f.close()
+    config = doConfig(gConfigPath, 'general')
+
+    recordFlag = False
+    snapsCount = 0
+    snapsArr = []
+    movData = []
+    dataForPlater = []
+    direction = 'none'
+
+    workers = config['workers']
+
+    for i in range(1, 31):
+        mkdir(config['imagesPath'] + str(i))
 
     fps = calcFPS()
     detector = moveing.MovingDetector()
+    detector.doConfig(gConfigPath)
 
     with picamera.PiCamera() as camera:
 
-        recordFlag = False
-        snapsCount = 0
-        snapsArr = []
-        movData = []
+        camera.resolution = (config['resolution']['height'],
+                             config['resolution']['width'])
+        camera.framerate = config['framerate']
+        camera.quality = config['quality']
 
-        camera.resolution = (800, 600)
-        camera.framerate = 20
-        camera.quality = 100
-        raw = open('/mnt/ramdisk/pic.jpg', 'r+')
+        raw = open(config['imagesPath'] + 'pic.jpg', 'w')
 
         for fil in camera.capture_continuous(raw,
                                              format="jpeg",
-                                             use_video_port=True):
+                                             use_video_port=config['videoPort']):
 
             if not recordFlag:
-                #t = time.time()
-                img = cv.imread('/mnt/ramdisk/pic.jpg')
-                #print(('ImRead:' + str(time.time() - t)))
 
-                #t = time.time()
-                movData = detector.processing_v2(img)
-                #print(('v2 time:' + str(time.time() - t)))
+                img = cv.imread(config['imagesPath'] + 'pic.jpg')
+                #img320 = cv.resize(img, (320, 240))
+                #cv.imwrite('/mnt/ramdisk/pic320.jpg', img320)
 
-                if True in movData:
+                moving, direction = detector.processing_v2(img)
+
+                if moving:
                     snapsArr = []
-                    snapsCount = 5
+                    snapsCount = workers
                     recordFlag = True
 
             if recordFlag:
                 if snapsCount:
-                    shutil.copyfile('/mnt/ramdisk/pic.jpg',
-                                    '/mnt/ramdisk/pic' +
-                                    str(snapsCount) + 'jpg')
+                    name = config['imagesPath'] + str(snapsCount) + '/pic' + str(snapsCount) + 'jpg'
+                    dataForPlater.append([name, snapsCount])
+                    shutil.copyfile(config['imagesPath'] + 'pic.jpg', name)
                     snapsCount -= 1
                 else:
                     recordFlag = False
-                    p = Pool(5)
-                    #p.map(plater.plate, ['/mnt/ramdisk/pic1.jpg',
-                    #                     '/mnt/ramdisk/pic2.jpg',
-                    #                     '/mnt/ramdisk/pic3.jpg',
-                    #                     '/mnt/ramdisk/pic4.jpg',
-                    #                     '/mnt/ramdisk/pic5.jpg'])
-                    p.map(plater.plate, ['/home/pi/Dev/Moduled-Camera/plateTest.jpg',
-                                         '/mnt/ramdisk/pic2.jpg',
-                                         '/mnt/ramdisk/pic3.jpg',
-                                         '/mnt/ramdisk/pic4.jpg',
-                                         '/mnt/ramdisk/pic5.jpg'])
-                    p.close()
+                    p = Process(target=action, args=(dataForPlater,
+                                                     direction,
+                                                     workers))
+                    p.start()
+                    dataForPlater = []
+                    time.sleep(1)
 
             raw.seek(0)
-            print((next(fps)))
+            # print((next(fps)))
 
         raw.close()
 

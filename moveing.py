@@ -1,4 +1,5 @@
 import cv2 as cv
+import json
 
 from multiprocessing import Pool
 
@@ -53,13 +54,31 @@ class MovingDetector(object):
         self.movFlag = False
 
         self.configCount = 0
-        self.activeRoi = [1, 7, 8, 9, 10]
+        self.activeRoi = []
         self.firstROI = 0
         self.roiCount = [0 for i in range(0, 16)]
         self.on = True
+        self.config = None
+
+    def doConfig(self, path):
+        config_file = open(path, 'r')
+        config_string = config_file.read()
+        config_file.close()
+        config_json = json.loads(config_string)
+        self.config = config_json['moving']
+
+        self.setActiveROI(self.config['roiForDrive'],
+                          self.config['roiForLeave'])
+
+        return self.config
+
+    def setActiveROI(self, drive, leave):
+        self.activeRoi = drive + leave
+        self.activeRoi.sort()
 
     def processing(self, image):
         roiCount = 0
+        direction = 'none'
         images = []
 
         g = self.gDivadeImg(image.copy(), self.activeRoi)
@@ -75,12 +94,15 @@ class MovingDetector(object):
                 p = Pool(roiCount)
                 results = p.map(detect, images)
                 p.close()
-                p.join()
-            return results
+            if True in results:
+                return [True, direction]
+            else:
+                return [False, direction]
         else:
-            return None
+            return [False, 'none']
 
     def processing_v2(self, image):
+        direction = 'none'
         results = []
 
         try:
@@ -93,12 +115,15 @@ class MovingDetector(object):
                         results.append(detect([self.littleImgs,
                                                self.littleImgsPrv],
                                                True, roi))
-                return results
+                if True in results:
+                    return [True, direction]
+                else:
+                    return [False, direction]
             else:
-                return None
+                return [False, 'none']
         except AttributeError:
             print('Image type ERROR')
-            return None
+            return [False, 'none']
 
     def gDivadeImg(self, img, number):
         row, cols, depth = img.shape
