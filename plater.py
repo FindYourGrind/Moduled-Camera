@@ -188,6 +188,8 @@ def plateFinder(finder, image):
 
     if not isinstance(cutNumberImg, type(None)):
 
+        finder.saveImgInJPG("/mnt/ramdisk/" + finder.imageID + "/forServer.jpg", image)
+
         rows, cols = cutNumberImg.shape[:2]
         angle = float(finder.config['angle'])
 

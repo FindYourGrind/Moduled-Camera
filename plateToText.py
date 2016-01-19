@@ -1,9 +1,6 @@
 import pytesseract
 import re
 import json
-import os
-import sys
-import subprocess
 
 import textStuff as tf
 

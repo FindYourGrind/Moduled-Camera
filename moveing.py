@@ -77,6 +77,8 @@ class MovingDetector(object):
         self.activeRoi.sort()
 
     def processing(self, image):
+        """ Do not use this version """
+
         roiCount = 0
         direction = 'none'
         images = []
@@ -102,6 +104,9 @@ class MovingDetector(object):
             return [False, 'none']
 
     def processing_v2(self, image):
+        """ Better use this version """
+
+        directionDetectionFlag = 1
         direction = 'none'
         results = []
 
@@ -112,9 +117,19 @@ class MovingDetector(object):
                 if self.activeRoi:
                     for roi in self.activeRoi:
                         self.littleImgs[roi] = next(g)
-                        results.append(detect([self.littleImgs,
-                                               self.littleImgsPrv],
-                                               True, roi))
+                        res = detect([self.littleImgs,
+                                      self.littleImgsPrv],
+                                      True, roi)
+                        results.append(res)
+                        if directionDetectionFlag:
+                            if res:
+                                directionDetectionFlag = 0
+                                try:
+                                    self.roiForDrive.index(roi)
+                                    direction = 1
+                                except ValueError:
+                                    direction = 2
+
                 if True in results:
                     return [True, direction]
                 else:

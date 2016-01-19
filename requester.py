@@ -18,15 +18,6 @@ def doRequest(data):
     configRequester = doConfig(gConfigPath, 'requester')
     configGeneral = doConfig(gConfigPath, 'general')
 
-    gg = {
-                       "dev_id": configGeneral['cameraID'],
-                        "place": data['place'],
-                        "car_plate": data['goodPlates'],
-                        "car_plate_raw": data['badPlates'],
-                        "direction": data['direction'],
-                        "img": data['image']
-                     }
-    print(gg)
     r = requests.post(configRequester['url'].strip(),
                      json={
                         "dev_id": configGeneral['cameraID'],

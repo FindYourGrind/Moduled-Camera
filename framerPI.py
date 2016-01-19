@@ -9,6 +9,7 @@ import shutil
 import json
 import requester
 import errno
+import base64
 
 from multiprocessing import Process, Pool
 
@@ -44,10 +45,17 @@ def getLastModifieTime(path):
     return os.path.getmtime(path)
 
 
-def generateRequestData(results):
+def generateRequestData(results, direction, workers):
+
+    folderWithGoodPictureFlag = True
+    folderWithGoodPicture = None
+    folderWithBadPicture = None
+
+    count = 0
+
     data = {}
 
-    data['place'] = 'none'
+    data['place'] = 1
 
     data['goodPlates'] = []
     data['badPlates'] = []
@@ -55,12 +63,29 @@ def generateRequestData(results):
     for chunk in results:
         if chunk:
             if chunk['good']:
+                folderWithGoodPicture = workers - count
+                folderWithGoodPictureFlag = False
                 data['goodPlates'].append(chunk['good'])
             if chunk['bad']:
+                if folderWithGoodPictureFlag:
+                    folderWithBadPicture = workers - count
                 data['badPlates'].append(chunk['bad'])
+        count += 1
 
-    data['direction'] = 0  # direction
-    data['image'] = 'none'
+    data['direction'] = direction
+
+    actualFolder = 0
+    encodedImage = 'none'
+
+    if folderWithGoodPicture:
+        actualFolder = folderWithGoodPicture
+    elif folderWithBadPicture:
+        actualFolder = folderWithBadPicture
+
+    with open('/mnt/ramdisk/' + str(actualFolder) + '/forServer.jpg', 'rb') as image:
+        encodedImage = base64.b64encode(image.read())
+
+    data['image'] = encodedImage
 
     return data
 
@@ -80,10 +105,11 @@ def action(paths, direction, workers):
     results = p.map(plater.plate, paths)
     p.close()
 
-    for worker in results:
-        if worker is not False:
-            data = generateRequestData(results)
+    for result in results:
+        if result is not False:
+            data = generateRequestData(results, direction, workers)
             requester.doRequest(data)
+            break
 
 
 if __name__ == '__main__':
