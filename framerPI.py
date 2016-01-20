@@ -12,8 +12,62 @@ import errno
 import base64
 
 from multiprocessing import Process, Pool
+from multiprocessing.managers import BaseManager
+
+from socketIO_client import SocketIO, LoggingNamespace
 
 gConfigPath = '/home/pi/Dev/Moduled-Camera/config.json'
+
+
+class Sensor(object):
+
+    def __init__(self):
+        self.sensorEvent = False
+
+    def __new__(cls):
+        if not hasattr(cls, 'instance'):
+            cls.instance = super(Sensor, cls).__new__(cls)
+        return cls.instance
+
+    def getEvent(self):
+        return self.sensorEvent
+
+    def setEvent(self):
+        self.sensorEvent = True
+
+    def resetEvent(self):
+        self.sensorEvent = False
+
+
+class MyManager(BaseManager):
+    pass
+
+
+def Manager():
+    m = MyManager()
+    m.start()
+    return m
+
+
+MyManager.register('Sensor', Sensor)
+
+
+def pSocketIO(sensorData):
+
+    def sensor():
+        sensorData.setEvent()
+
+    def setConfig():
+        pass
+
+    def getConfig():
+        config
+
+    socketIO = SocketIO('192.168.1.146', 8081, LoggingNamespace)
+    socketIO.on('sensor', sensor)
+    socketIO.on('set_config', setConfig)
+    socketIO.on('get_config', getConfig)
+    socketIO.wait()
 
 
 def doConfig(path, typeOfConfig):
@@ -100,7 +154,7 @@ def mkdir(path):
             raise
 
 
-def action(paths, direction, workers):
+def action(paths, direction, workers, req):
     p = Pool(workers)
     results = p.map(plater.plate, paths)
     p.close()
@@ -108,13 +162,17 @@ def action(paths, direction, workers):
     for result in results:
         if result is not False:
             data = generateRequestData(results, direction, workers)
-            requester.doRequest(data)
+            if req:
+                requester.doRequest(data)
             break
 
 
 if __name__ == '__main__':
 
     config = doConfig(gConfigPath, 'general')
+
+    dataManager = Manager()
+    sensorData = dataManager.Sensor()
 
     recordFlag = False
     snapsCount = 0
@@ -125,6 +183,9 @@ if __name__ == '__main__':
 
     workers = config['workers']
 
+    pSocket = Process(target=pSocketIO, args=(sensorData,))
+    pSocket.start()
+
     for i in range(1, 31):
         mkdir(config['imagesPath'] + str(i))
 
@@ -134,8 +195,8 @@ if __name__ == '__main__':
 
     with picamera.PiCamera() as camera:
 
-        camera.resolution = (config['resolution']['height'],
-                             config['resolution']['width'])
+        camera.resolution = (config['resolution']['width'],
+                             config['resolution']['height'])
         camera.framerate = config['framerate']
         camera.quality = config['quality']
 
@@ -148,15 +209,21 @@ if __name__ == '__main__':
             if not recordFlag:
 
                 img = cv.imread(config['imagesPath'] + 'pic.jpg')
-                #img320 = cv.resize(img, (320, 240))
-                #cv.imwrite('/mnt/ramdisk/pic320.jpg', img320)
 
-                moving, direction = detector.processing_v2(img)
+                if config['sensor']:
+                    if sensorData.getEvent():
+                        sensorData.resetEvent()
+                        snapsArr = []
+                        snapsCount = workers
+                        recordFlag = True
+                        time.sleep(config['delay'] / 1000)
+                else:
+                    moving, direction = detector.processing_v2(img)
 
-                if moving:
-                    snapsArr = []
-                    snapsCount = workers
-                    recordFlag = True
+                    if moving:
+                        snapsArr = []
+                        snapsCount = workers
+                        recordFlag = True
 
             if recordFlag:
                 if snapsCount:
@@ -168,13 +235,14 @@ if __name__ == '__main__':
                     recordFlag = False
                     p = Process(target=action, args=(dataForPlater,
                                                      direction,
-                                                     workers))
+                                                     workers,
+                                                     config['doRequest']))
                     p.start()
                     dataForPlater = []
                     time.sleep(1)
 
             raw.seek(0)
-            # print((next(fps)))
+            #print((next(fps)))
 
         raw.close()
 
