@@ -39,6 +39,26 @@ class Sensor(object):
         self.sensorEvent = False
 
 
+class Config(object):
+
+    def __init__(self):
+        self.configEvent = False
+
+    def __new__(cls):
+        if not hasattr(cls, 'instance'):
+            cls.instance = super(Config, cls).__new__(cls)
+        return cls.instance
+
+    def getEvent(self):
+        return self.configEvent
+
+    def setEvent(self):
+        self.configEvent = True
+
+    def resetEvent(self):
+        self.configEvent = False
+
+
 class MyManager(BaseManager):
     pass
 
@@ -50,24 +70,41 @@ def Manager():
 
 
 MyManager.register('Sensor', Sensor)
+MyManager.register('Config', Config)
 
 
-def pSocketIO(sensorData):
+def pSocketIO(sensorData, configData):
 
     def sensor():
         sensorData.setEvent()
 
-    def setConfig():
-        pass
+    def setConfig(data):
+        print(data)
+        #writeConfigJSON(gConfigPath, data)
+        #configData.setEvent()
 
     def getConfig():
-        config
+        config = readConfigJSON(gConfigPath)
+        socketIO.emit('config', config)
 
     socketIO = SocketIO('192.168.1.146', 8081, LoggingNamespace)
     socketIO.on('sensor', sensor)
     socketIO.on('set_config', setConfig)
     socketIO.on('get_config', getConfig)
     socketIO.wait()
+
+
+def readConfigJSON(path):
+    config_file = open(path, 'r')
+    config_string = config_file.read()
+    config_file.close()
+    return config_string
+
+
+def writeConfigJSON(path, data):
+    config_file = open(path, 'w')
+    config_file.write(data)
+    config_file.close()
 
 
 def doConfig(path, typeOfConfig):
@@ -169,81 +206,87 @@ def action(paths, direction, workers, req):
 
 if __name__ == '__main__':
 
-    config = doConfig(gConfigPath, 'general')
+    while True:
+        config = doConfig(gConfigPath, 'general')
 
-    dataManager = Manager()
-    sensorData = dataManager.Sensor()
+        dataManager = Manager()
+        sensorData = dataManager.Sensor()
+        configData = dataManager.Config()
 
-    recordFlag = False
-    snapsCount = 0
-    snapsArr = []
-    movData = []
-    dataForPlater = []
-    direction = 'none'
+        recordFlag = False
+        snapsCount = 0
+        snapsArr = []
+        movData = []
+        dataForPlater = []
+        direction = 'none'
 
-    workers = config['workers']
+        workers = config['workers']
 
-    pSocket = Process(target=pSocketIO, args=(sensorData,))
-    pSocket.start()
+        pSocket = Process(target=pSocketIO, args=(sensorData, configData, ))
+        pSocket.start()
 
-    for i in range(1, 31):
-        mkdir(config['imagesPath'] + str(i))
+        for i in range(1, 31):
+            mkdir(config['imagesPath'] + str(i))
 
-    fps = calcFPS()
-    detector = moveing.MovingDetector()
-    detector.doConfig(gConfigPath)
+        fps = calcFPS()
+        detector = moveing.MovingDetector()
+        detector.doConfig(gConfigPath)
 
-    with picamera.PiCamera() as camera:
+        with picamera.PiCamera() as camera:
 
-        camera.resolution = (config['resolution']['width'],
-                             config['resolution']['height'])
-        camera.framerate = config['framerate']
-        camera.quality = config['quality']
+            camera.resolution = (config['resolution']['width'],
+                                 config['resolution']['height'])
+            camera.framerate = config['framerate']
+            camera.quality = config['quality']
 
-        raw = open(config['imagesPath'] + 'pic.jpg', 'w')
+            raw = open(config['imagesPath'] + 'pic.jpg', 'w')
 
-        for fil in camera.capture_continuous(raw,
-                                             format="jpeg",
-                                             use_video_port=config['videoPort']):
+            for fil in camera.capture_continuous(raw,
+                                                 format="jpeg",
+                                                 use_video_port=config['videoPort']):
 
-            if not recordFlag:
+                if not recordFlag:
 
-                img = cv.imread(config['imagesPath'] + 'pic.jpg')
+                    img = cv.imread(config['imagesPath'] + 'pic.jpg')
 
-                if config['sensor']:
-                    if sensorData.getEvent():
-                        sensorData.resetEvent()
-                        snapsArr = []
-                        snapsCount = workers
-                        recordFlag = True
-                        time.sleep(config['delay'] / 1000)
-                else:
-                    moving, direction = detector.processing_v2(img)
+                    if config['sensor']:
+                        if sensorData.getEvent():
+                            sensorData.resetEvent()
+                            snapsArr = []
+                            snapsCount = workers
+                            recordFlag = True
+                            time.sleep(config['delay'] / 1000)
+                    else:
+                        moving, direction = detector.processing_v2(img)
 
-                    if moving:
-                        snapsArr = []
-                        snapsCount = workers
-                        recordFlag = True
+                        if moving:
+                            snapsArr = []
+                            snapsCount = workers
+                            recordFlag = True
 
-            if recordFlag:
-                if snapsCount:
-                    name = config['imagesPath'] + str(snapsCount) + '/pic' + str(snapsCount) + 'jpg'
-                    dataForPlater.append([name, snapsCount])
-                    shutil.copyfile(config['imagesPath'] + 'pic.jpg', name)
-                    snapsCount -= 1
-                else:
-                    recordFlag = False
-                    p = Process(target=action, args=(dataForPlater,
-                                                     direction,
-                                                     workers,
-                                                     config['doRequest']))
-                    p.start()
-                    dataForPlater = []
-                    time.sleep(1)
+                if recordFlag:
+                    if snapsCount:
+                        name = config['imagesPath'] + str(snapsCount) + '/pic' + str(snapsCount) + 'jpg'
+                        dataForPlater.append([name, snapsCount])
+                        shutil.copyfile(config['imagesPath'] + 'pic.jpg', name)
+                        snapsCount -= 1
+                    else:
+                        recordFlag = False
+                        p = Process(target=action, args=(dataForPlater,
+                                                         direction,
+                                                         workers,
+                                                         config['doRequest']))
+                        p.start()
+                        dataForPlater = []
+                        time.sleep(1)
 
-            raw.seek(0)
-            #print((next(fps)))
+                if configData.getEvent():
+                    print('reconfig')
+                    break
 
-        raw.close()
+                raw.seek(0)
+                #print((next(fps)))
+
+            raw.close()
 
 

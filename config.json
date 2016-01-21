@@ -11,7 +11,7 @@
         "workers": 10,
         "videoPort": true,
         "sensor": true,
-        "delay": 50,
+        "delay": 60,
         "doRequest": false
     },
     "framer": {
