@@ -14,7 +14,7 @@ import base64
 from multiprocessing import Process, Pool
 from multiprocessing.managers import BaseManager
 
-from socketIO_client import SocketIO, LoggingNamespace
+from socketIO_client import SocketIO, BaseNamespace
 
 gConfigPath = '/home/pi/Dev/Moduled-Camera/config.json'
 
@@ -75,22 +75,29 @@ MyManager.register('Config', Config)
 
 def pSocketIO(sensorData, configData):
 
-    def sensor():
-        sensorData.setEvent()
+    class Namespace(BaseNamespace):
 
-    def setConfig(data):
-        print(data)
-        #writeConfigJSON(gConfigPath, data)
-        #configData.setEvent()
+        def on_sensor(self):
+            print('Sensor triggered')
+            sensorData.setEvent()
 
-    def getConfig():
-        config = readConfigJSON(gConfigPath)
-        socketIO.emit('config', config)
+        def on_set_config(self, data):
+            print('Configuration data received from administration server')
+            writeConfigJSON(gConfigPath, data)
+            configData.setEvent()
 
-    socketIO = SocketIO('192.168.1.146', 8081, LoggingNamespace)
-    socketIO.on('sensor', sensor)
-    socketIO.on('set_config', setConfig)
-    socketIO.on('get_config', getConfig)
+        def on_get_config(self):
+            print('Configuration data sended to administration server')
+            config = readConfigJSON(gConfigPath)
+            socketIO.emit('config', config)
+
+        def on_connect(self):
+            print('Connected to administration server')
+
+        def on_disconnect(self):
+            print('Disconnected from administration server')
+
+    socketIO = SocketIO('192.168.1.146', 8081, Namespace)
     socketIO.wait()
 
 
@@ -206,12 +213,21 @@ def action(paths, direction, workers, req):
 
 if __name__ == '__main__':
 
+    dataManager = Manager()
+    sensorData = dataManager.Sensor()
+    configData = dataManager.Config()
+
+    pSocket = Process(target=pSocketIO, args=(sensorData, configData, ))
+    pSocket.start()
+
+    fps = calcFPS()
+
+    detector = moveing.MovingDetector()
+    detector.doConfig(gConfigPath)
+
     while True:
         config = doConfig(gConfigPath, 'general')
-
-        dataManager = Manager()
-        sensorData = dataManager.Sensor()
-        configData = dataManager.Config()
+        configFramer = doConfig(gConfigPath, 'framer')
 
         recordFlag = False
         snapsCount = 0
@@ -222,21 +238,14 @@ if __name__ == '__main__':
 
         workers = config['workers']
 
-        pSocket = Process(target=pSocketIO, args=(sensorData, configData, ))
-        pSocket.start()
-
         for i in range(1, 31):
             mkdir(config['imagesPath'] + str(i))
-
-        fps = calcFPS()
-        detector = moveing.MovingDetector()
-        detector.doConfig(gConfigPath)
 
         with picamera.PiCamera() as camera:
 
             camera.resolution = (config['resolution']['width'],
                                  config['resolution']['height'])
-            camera.framerate = config['framerate']
+            camera.framerate = configFramer['framerate']
             camera.quality = config['quality']
 
             raw = open(config['imagesPath'] + 'pic.jpg', 'w')
@@ -281,7 +290,7 @@ if __name__ == '__main__':
                         time.sleep(1)
 
                 if configData.getEvent():
-                    print('reconfig')
+                    configData.resetEvent()
                     break
 
                 raw.seek(0)
