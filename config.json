@@ -3,14 +3,14 @@
         "cameraID": "461727824017081",
         "imagesPath": "/mnt/ramdisk/",
         "resolution": {
-            "height": 240,
-            "width": 320
+            "height": 600,
+            "width": 800
         },
         "quality": 100,
         "workers": 10,
         "videoPort": true,
         "sensor": true,
-        "delay": 197,
+        "delay": 60,
         "doRequest": false
     },
     "framer": {

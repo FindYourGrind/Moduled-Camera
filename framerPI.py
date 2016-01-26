@@ -19,6 +19,51 @@ from socketIO_client import SocketIO, BaseNamespace
 gConfigPath = '/home/pi/Dev/Moduled-Camera/config.json'
 
 
+class ImageStream(object):
+
+    def __init__(self):
+        self.image = False
+        self.mutex = True
+        self.flag = True
+        self.lastTime = time.time()
+
+    def __new__(cls):
+        if not hasattr(cls, 'instance'):
+            cls.instance = super(ImageStream, cls).__new__(cls)
+        return cls.instance
+
+    def getImage(self):
+        return self.image
+
+    def setImage(self, image):
+        self.image = image
+
+    def setMutex(self):
+        if not self.mutex:
+            print('Streaming started')
+            self.mutex = True
+        self.lastTime = time.time()
+
+    def resetMutex(self):
+        print('Streaming stoped')
+        self.mutex = False
+
+    def getMutex(self):
+        return self.mutex
+
+    def getLastTime(self):
+        return self.lastTime
+
+    def setFlag(self):
+        self.flag = True
+
+    def resetFlag(self):
+        self.flag = False
+
+    def getFlag(self):
+        return self.flag
+
+
 class Sensor(object):
 
     def __init__(self):
@@ -71,9 +116,10 @@ def Manager():
 
 MyManager.register('Sensor', Sensor)
 MyManager.register('Config', Config)
+MyManager.register('ImageStream', ImageStream)
 
 
-def pSocketIO(sensorData, configData):
+def pSocketIO(sensorData, configData, imageStreamData):
 
     class Namespace(BaseNamespace):
 
@@ -90,6 +136,16 @@ def pSocketIO(sensorData, configData):
             print('Configuration data sended to administration server')
             config = readConfigJSON(gConfigPath)
             socketIO.emit('config', config)
+
+        def on_get_image(self):
+            while not imageStreamData.getFlag():
+                pass
+            imageStreamData.resetFlag()
+            imageStreamData.setMutex()
+            img = imageStreamData.getImage()
+            if(img):
+                encodedImage = base64.b64encode(img)
+                socketIO.emit('send_image', encodedImage)
 
         def on_connect(self):
             print('Connected to administration server')
@@ -216,8 +272,11 @@ if __name__ == '__main__':
     dataManager = Manager()
     sensorData = dataManager.Sensor()
     configData = dataManager.Config()
+    imageStream = dataManager.ImageStream()
 
-    pSocket = Process(target=pSocketIO, args=(sensorData, configData, ))
+    pSocket = Process(target=pSocketIO, args=(sensorData,
+                                              configData,
+                                              imageStream,))
     pSocket.start()
 
     fps = calcFPS()
@@ -225,9 +284,13 @@ if __name__ == '__main__':
     detector = moveing.MovingDetector()
     detector.doConfig(gConfigPath)
 
+
     while True:
         config = doConfig(gConfigPath, 'general')
         configFramer = doConfig(gConfigPath, 'framer')
+
+        f = open(config['imagesPath'] + 'pic.jpg', 'w+')
+        f.close()
 
         recordFlag = False
         snapsCount = 0
@@ -248,7 +311,7 @@ if __name__ == '__main__':
             camera.framerate = configFramer['framerate']
             camera.quality = config['quality']
 
-            raw = open(config['imagesPath'] + 'pic.jpg', 'w')
+            raw = open(config['imagesPath'] + 'pic.jpg', 'r+')
 
             for fil in camera.capture_continuous(raw,
                                                  format="jpeg",
@@ -257,6 +320,21 @@ if __name__ == '__main__':
                 if not recordFlag:
 
                     img = cv.imread(config['imagesPath'] + 'pic.jpg')
+
+                    if(imageStream.getMutex()):
+                        imgForView = cv.resize(img, (320, 240),
+                                               interpolation=cv.INTER_CUBIC)
+                        cv.imwrite(config['imagesPath'] + 'pic_server.jpg',
+                                          imgForView,
+                                          [int(cv.IMWRITE_JPEG_QUALITY), 75])
+                        imgForViewFile = open(config['imagesPath'] + 'pic_server.jpg', 'r')
+                        imageStream.setImage(imgForViewFile.read())
+                        imgForViewFile.close()
+
+                        imageStream.setFlag()
+
+                        if((time.time() - imageStream.getLastTime()) > 5):
+                            imageStream.resetMutex()
 
                     if config['sensor']:
                         if sensorData.getEvent():
