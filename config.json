@@ -9,7 +9,7 @@
         "quality": 100,
         "workers": 10,
         "videoPort": true,
-        "sensor": true,
+        "sensor": false,
         "delay": 60,
         "doRequest": false
     },

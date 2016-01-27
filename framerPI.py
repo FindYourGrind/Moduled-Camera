@@ -45,7 +45,8 @@ class ImageStream(object):
         self.lastTime = time.time()
 
     def resetMutex(self):
-        print('Streaming stoped')
+        if self.mutex:
+            print('Streaming stoped')
         self.mutex = False
 
     def getMutex(self):
@@ -138,14 +139,23 @@ def pSocketIO(sensorData, configData, imageStreamData):
             socketIO.emit('config', config)
 
         def on_get_image(self):
-            while not imageStreamData.getFlag():
-                pass
-            imageStreamData.resetFlag()
+            #while not imageStreamData.getFlag():
+            #    pass
+            #imageStreamData.resetFlag()
             imageStreamData.setMutex()
             img = imageStreamData.getImage()
             if(img):
                 encodedImage = base64.b64encode(img)
                 socketIO.emit('send_image', encodedImage)
+
+        def on_get_log(self):
+            logFile = open('camera.log', 'r')
+            logData = logFile.read()
+            logFile.close()
+            socketIO.emit('send_log', logData)
+
+        def on_stop_stream(self):
+            imageStream.resetMutex()
 
         def on_connect(self):
             print('Connected to administration server')
@@ -262,8 +272,22 @@ def action(paths, direction, workers, req):
     for result in results:
         if result is not False:
             data = generateRequestData(results, direction, workers)
+
             if req:
                 requester.doRequest(data)
+
+            logData = {}
+
+            logData['goodPlates'] = data['goodPlates']
+            logData['badPlates'] = data['badPlates']
+            logData['direction'] = data['direction']
+            logData['time'] = time.asctime()
+
+            logFile = open('camera.log', 'a')
+            jsonStrLog = json.dumps(logData)
+            logFile.write(jsonStrLog + '\r\n')
+            logFile.close()
+
             break
 
 
@@ -283,7 +307,6 @@ if __name__ == '__main__':
 
     detector = moveing.MovingDetector()
     detector.doConfig(gConfigPath)
-
 
     while True:
         config = doConfig(gConfigPath, 'general')
@@ -326,7 +349,7 @@ if __name__ == '__main__':
                                                interpolation=cv.INTER_CUBIC)
                         cv.imwrite(config['imagesPath'] + 'pic_server.jpg',
                                           imgForView,
-                                          [int(cv.IMWRITE_JPEG_QUALITY), 75])
+                                          [int(cv.IMWRITE_JPEG_QUALITY), 65])
                         imgForViewFile = open(config['imagesPath'] + 'pic_server.jpg', 'r')
                         imageStream.setImage(imgForViewFile.read())
                         imgForViewFile.close()
